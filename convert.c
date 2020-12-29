@@ -1,18 +1,19 @@
-// Linux x86_64: 
-// gcc convert.c -s -o 60000-cheatcode-generator-linux-x86_64.elf
+ /*   
+    Copyright (C) 2020  Florian Bach ("Leseratte")
 
-// Linux i386 / i686
-// gcc -m32 convert.c -s -o 60000-cheatcode-generator-linux-i386.elf -march=i386
-// gcc -m32 convert.c -s -o 60000-cheatcode-generator-linux-i686.elf -march=i686
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Affero General Public License as published by
+    the Free Software Foundation, version 3.
 
-// Linux x32: 
-// gcc -mx32 convert.c -s -o 60000-cheatcode-generator-linux-x32.elf
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Affero General Public License for more details.
 
-// Win32: 
-// i686-w64-mingw32-gcc convert.c -lws2_32 -DWINDOWS=1 -s -o 60000-cheatcode-generator-win32.exe
+    You should have received a copy of the GNU Affero General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-// Win64: 
-// x86_64-w64-mingw32-gcc convert.c -lws2_32 -DWINDOWS=1 -s -o 60000-cheatcode-generator-win64.exe
+*/
 
 
 
@@ -62,67 +63,6 @@ memmem (const void *haystack, size_t haystack_len, const void *needle,
 }
 
 #endif
-
-void hexDump (const char * desc, const void * addr, const int len) {
-    int i;
-    unsigned char buff[17];
-    const unsigned char * pc = (const unsigned char *)addr;
-
-    // Output description if given.
-
-    if (desc != NULL)
-        printf ("%s:\n", desc);
-
-    // Length checks.
-
-    if (len == 0) {
-        printf("  ZERO LENGTH\n");
-        return;
-    }
-    else if (len < 0) {
-        printf("  NEGATIVE LENGTH: %d\n", len);
-        return;
-    }
-
-    // Process every byte in the data.
-
-    for (i = 0; i < len; i++) {
-        // Multiple of 16 means new line (with line offset).
-
-        if ((i % 16) == 0) {
-            // Don't print ASCII buffer for the "zeroth" line.
-
-            if (i != 0)
-                printf ("  %s\n", buff);
-
-            // Output the offset.
-
-            printf ("  %04x ", i);
-        }
-
-        // Now the hex code for the specific character.
-        printf (" %02x", pc[i]);
-
-        // And buffer a printable ASCII character for later.
-
-        if ((pc[i] < 0x20) || (pc[i] > 0x7e)) // isprint() may be better.
-            buff[i % 16] = '.';
-        else
-            buff[i % 16] = pc[i];
-        buff[(i % 16) + 1] = '\0';
-    }
-
-    // Pad out last line if not exactly 16 characters.
-
-    while ((i % 16) != 0) {
-        printf ("   ");
-        i++;
-    }
-
-    // And print the final ASCII buffer.
-
-    printf ("  %s\n", buff);
-}
 
 int main(int argc, char * argv[]) {
     
