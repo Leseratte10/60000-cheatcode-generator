@@ -128,7 +128,7 @@ int main(int argc, char * argv[]) {
     
     
         if (argc != 2) {
-            printf("Error 60000 fix generator (v1) by Leseratte\n");
+            printf("Error 60000 fix generator (v2) by Leseratte\n");
             printf("This will (try to) generate an anti-error-60000 code\n");
             printf("for the game whose main.dol you enter as parameter.\n");
             printf("Usage: %s <game.dol>\n", argv[0]);
@@ -227,31 +227,44 @@ int main(int argc, char * argv[]) {
                                         0x90, 0x1e, 0x00, 0x04};
                                   
                                      
-        char search_loginStatePtr_v1[18] = {0x38, 0xa0, 0x00, 0x01,
+        char search_loginStatePtr_v1[36] = { 0x2c, 0x03, 0x00, 0x00, 
+                                            0x41, 0x82, 0x00, 0x18, 
+                                            0x80, 0x03, 0x00, 0x04, 
+                                            0x2c, 0x00, 0x00, 0x05, 
+                                            0x40, 0x82, 0x00, 0x0c, 
+                                            0x38, 0x60, 0x00, 0x01, 
+                                            0x4e, 0x80, 0x00, 0x20, 
+                                            0x38, 0x60, 0x00, 0x00, 
+                                            0x4e, 0x80, 0x00, 0x20}; 
+        
+        char search_loginStatePtr_v2[18] = {0x38, 0xa0, 0x00, 0x01,
                                          0x38, 0x00, 0x00, 0x00, 
                                          0x38, 0x60, 0x00, 0x01, 
                                          0x90, 0xa4, 0x00, 0x04, 
                                          0x80, 0x8d};
                                          
-        char search_loginStatePtr_v2[9] = {0x38, 0x64, 0x00, 0x4c, 
+        char search_loginStatePtr_v3[9] = {0x38, 0x64, 0x00, 0x4c, 
                                             0x38, 0x84, 0x01, 0x4c, 
                                             0x48};
+
+ 
+
                                          
-       char search_InvalidGSID_v1[21] = {0x2c, 0x00, 0x00, 0x00, 
+        char search_InvalidGSID_v1[21] = {0x2c, 0x00, 0x00, 0x00, 
                                       0x41, 0x82, 0x00, 0x94, 
                                       0x3c, 0x80, 0xff, 0xff, 
                                       0x38, 0x60, 0x00, 0x06, 
                                       0x38, 0x84, 0x15, 0xa0, 
                                       0x4b};
                                       
-       char search_InvalidGSID_v2[21] = {0x2c, 0x00, 0x00, 0x00, 
+        char search_InvalidGSID_v2[21] = {0x2c, 0x00, 0x00, 0x00, 
                                       0x41, 0x82, 0x00, 0xa0, 
                                       0x3c, 0x80, 0xff, 0xff, 
                                       0x38, 0x60, 0x00, 0x06, 
                                       0x38, 0x84, 0x15, 0xa0, 
                                       0x4b};
                                       
-      char search_InvalidGSID_v3[21] = {0x2c, 0x00, 0x00, 0x00, 
+        char search_InvalidGSID_v3[21] = {0x2c, 0x00, 0x00, 0x00, 
                                      0x41, 0x82, 0x00, 0x9c, 
                                      0x3c, 0x80, 0xff, 0xff, 
                                      0x38, 0x60, 0x00, 0x06, 
@@ -264,10 +277,45 @@ int main(int argc, char * argv[]) {
         
         
         // find GetUserId: 
+
+        int is_r13_reference = 0;           // 0: unknown, 1: r13 ref, 2: absolute addr.
+        int final_stpLoginCnt = 0; 
         
         char * GetUserID = memmem(T1_section, t1_size, search_GetUserId_v1, 12);
-        char * lg_state_ptr = memmem(T1_section, t1_size, search_loginStatePtr_v1, 18);
         char * patchAtAddress = memmem(T1_section, t1_size, search_InvalidGSID_v1, 21);
+        char * lg_state_ptr = memmem(T1_section, t1_size, search_loginStatePtr_v1, 36); // replace
+
+        if (lg_state_ptr != 0) {
+            unsigned int pre1 = *(int*)((char*)lg_state_ptr - 8);
+            unsigned int pre2 = *(int *)((char*)lg_state_ptr - 4);
+
+            pre1 = ntohl(pre1);
+            pre2 = ntohl(pre2);
+
+            if (pre1 >> 16 == 0x3c60 && pre2 >> 16 == 0x8063) {
+                // This game does not use r13. 
+                final_stpLoginCnt = (pre1 & 0xffff) << 16;
+
+                int next_part = (pre2 & 0xffff);
+
+                if (next_part >= 0x8000)
+                    final_stpLoginCnt -= 0x10000; 
+
+                final_stpLoginCnt += next_part;   
+                is_r13_reference = 2;
+            }
+            else if (pre2 >> 16 == 0x806d) {
+                // This game does use r13
+                is_r13_reference = 1;
+                final_stpLoginCnt = pre2;
+            }
+            else {
+                is_r13_reference = 0;
+                lg_state_ptr = 0;
+            }
+
+        }
+        
         
         int branch_back_code = 0x48000070;
         
@@ -285,18 +333,19 @@ int main(int argc, char * argv[]) {
         }
         else found_GetUserId = 1; 
        
-        if (lg_state_ptr == 0) {
-            found_loginStatePtr = 1; 
+        if (is_r13_reference == 0) { 
             // try heuristics: 
-            lg_state_ptr = memmem(T1_section, t1_size, search_loginStatePtr_v1, 17);
+            lg_state_ptr = memmem(T1_section, t1_size, search_loginStatePtr_v2, 18);
             if (lg_state_ptr == 0) {
-                lg_state_ptr = memmem(T1_section, t1_size, search_loginStatePtr_v2, 9);
+                lg_state_ptr = memmem(T1_section, t1_size, search_loginStatePtr_v3, 9);
                 if (lg_state_ptr != 0) {
-                    found_loginStatePtr = 2;
+                    found_loginStatePtr = 3;
+                    is_r13_reference = 3;
                 }
             }
             else {
-                found_loginStatePtr = 1; 
+                found_loginStatePtr = 2; 
+                is_r13_reference = 3;
             }
         }
         else found_loginStatePtr = 1; 
@@ -344,12 +393,12 @@ int main(int argc, char * argv[]) {
             return 4;
         }
         
-        printf("Found GetUserID v%d, loginStatePtr v%d, InvalidGSID v%d\n", 
-                found_GetUserId, found_loginStatePtr, found_InvalidGSID);
+        printf("Found GetUserID v%d, loginStatePtr v%d.%d, InvalidGSID v%d\n", 
+                found_GetUserId, found_loginStatePtr, is_r13_reference, found_InvalidGSID);
         
         GetUserID -= 8;     // this now points to the function start
         patchAtAddress -= 20;
-        char * accessLoginStatePtr = (char*)(lg_state_ptr - 4); 
+
           
         /*  
         hexDump("GetUserID", GetUserID, 0x20); 
@@ -358,24 +407,58 @@ int main(int argc, char * argv[]) {
         */
         
         int wii_GetUserID = 0; 
-        int wii_accessLoginStatePtr = 0; 
         int wii_patchAtAddress = 0; 
         
         wii_GetUserID = (GetUserID - T1_section) + t1_mem_offset; 
-        wii_accessLoginStatePtr = (accessLoginStatePtr - T1_section) + t1_mem_offset; 
-        wii_patchAtAddress = (patchAtAddress - T1_section) + t1_mem_offset; 
         
-        //printf("Wii offsets: %08x %08x %08x\n", wii_GetUserID, wii_accessLoginStatePtr, wii_patchAtAddress);
+        wii_patchAtAddress = (patchAtAddress - T1_section) + t1_mem_offset; 
+
+        printf("Wii offsets: %08x (0) %08x\n", wii_GetUserID, wii_patchAtAddress);
+        printf("is_r13: %d, data: %x\n", is_r13_reference, final_stpLoginCnt);
         
         // Determine branch to DWCi_Auth_GetConsoleUserId (bl):            
         int branch_value = 0x48000001 + (((wii_GetUserID) - (wii_patchAtAddress)) & 0x3ffffff);
         
         
-        // Get the code to access the login state ptr:
-        int access = htonl(*(int *)accessLoginStatePtr); 
+        // 0: unknown, 1: r13 ref, 2: absolute addr.
+        int access1, access2;
+        if (is_r13_reference == 1) {
+            // r13 ref.
+            access1 = 0x80ed0000 | (final_stpLoginCnt & 0xffff); 
+            access2 = 0x60000000;
+        }
+        else if (is_r13_reference == 2) {
+            // absolute addr.
+            access1 = 0x3ce00000 + ((unsigned int)final_stpLoginCnt >> 16);   // lis r7, (final_stpLoginCnt >> 16)
+
+            int next_off = final_stpLoginCnt & 0xffff;
+            if (next_off >= 0x8000) {
+                access1++;
+            }
+            
+            access2 = 0x80e70000 + next_off;    // lwz r7, X(r7);
+
+        }
+        else if (is_r13_reference == 3) {
+            // r13 ref, but still need to convert the addr. 
+            char * accessLoginStatePtr = (char*)(lg_state_ptr - 4); 
+            int wii_accessLoginStatePtr = 0; 
+            wii_accessLoginStatePtr = (accessLoginStatePtr - T1_section) + t1_mem_offset; 
+            int access = htonl(*(int *)accessLoginStatePtr); 
                 
-        // Patch that code to register 7: 
-        access = 0x80ed0000 | (access & 0xffff); 
+            // Patch that code to register 7: 
+            access1 = 0x80ed0000 | (access & 0xffff); 
+            access2 = 0x60000000;
+
+        }
+        else {
+            printf("err: r13 ref = %d\n", is_r13_reference);
+            return 2;
+        }
+
+
+        // Get the code to access the login state ptr:
+ 
         
 
         printf("=====================================\n");
@@ -388,9 +471,10 @@ int main(int argc, char * argv[]) {
         // Print the branch to GetConsoleUserID: 
         printf("04%06x %08x\n", wii_patchAtAddress & 0xffffff, branch_value);
         // Print the C2 header: 
-        printf("C2%06x %08x\n", (wii_patchAtAddress + 4) & 0xffffff, 6);
+        printf("C2%06x %08x\n", (wii_patchAtAddress + 4) & 0xffffff, 7);
         // Print code: 
-        printf("%08x %08x\n", access, 0x38000003); 
+        printf("%08x %08x\n", access1, access2); 
+        printf("%08x %08x\n", 0x60000000, 0x38000003); 
         printf("%08x %08x\n", 0x90070004, 0x60630800); 
         printf("%08x %08x\n", 0x90670040, 0x90870044); 
         printf("%08x %08x\n", 0x8087001c, 0x8064000c); 
