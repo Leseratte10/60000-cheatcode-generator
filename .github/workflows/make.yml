@@ -11,9 +11,9 @@ jobs:
     steps:
       - uses: actions/checkout@v2
 
-      - name: Compile for Mac
+      - name: Compile for Mac (x86_64)
         run: |
-          gcc convert.c -s -o 60000-cheatcode-generator-mac-x86_64.elf
+          gcc convert.c -s -arch x86_64 -o 60000-cheatcode-generator-mac-x86_64.elf
           strip 60000-cheatcode-generator-mac-x86_64.elf
 
       - name: Upload distribution
