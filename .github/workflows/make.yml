@@ -1,0 +1,46 @@
+name: Build binaries (Docker)
+
+on:
+  push:
+    branches: [ master ]
+
+jobs:
+  build-mac:
+    runs-on: macos-latest
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Compile for Mac
+        run: |
+          gcc convert.c -s -o 60000-cheatcode-generator-mac-x86_64.elf
+          strip 60000-cheatcode-generator-mac-x86_64.elf
+
+      - name: Upload distribution
+        uses: actions/upload-artifact@v2
+        with:
+          name: binaries
+          path: | 
+            *.elf
+
+  build-linux:
+    runs-on: ubuntu-20.04
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@v2
+      
+      - name: Docker
+        run: DOCKER_BUILDKIT=1 docker build -o output . 
+
+      - name: Upload distribution
+        uses: actions/upload-artifact@v2
+        with:
+          name: binaries
+          path: | 
+            output
+
+      - name: Remove old artifacts
+        uses: c-hive/gha-remove-artifacts@v1
+        with:
+          age: '10 minutes'
+
