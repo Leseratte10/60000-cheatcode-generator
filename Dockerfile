@@ -1,3 +1,11 @@
+ARG OSX_SDK=MacOSX10.10.sdk
+ARG OSX_SDK_SUM=631b4144c6bf75bf7a4d480d685a9b5bda10ee8d03dbf0db829391e2ef858789
+
+ARG OSX_CROSS_COMMIT=a9317c18a3a457ca0a657f08cc4d0d43c6cf8953
+
+
+
+
 # Clear cache: 
 # docker builder prune
 
@@ -24,6 +32,55 @@ RUN cd /projectroot && \
     x86_64-w64-mingw32-gcc convert.c -lws2_32 -DWINDOWS=1 -s -o 60000-cheatcode-generator-win64.exe
 
 
+
+FROM debian:buster AS osx-cross
+ENV OSX_CROSS_PATH=/osxcross
+ARG OSX_CROSS_COMMIT
+ARG OSX_SDK
+ARG OSX_SDK_SUM
+WORKDIR "${OSX_CROSS_PATH}"
+ARG DEBIAN_FRONTEND=noninteractive
+# Dependencies for https://github.com/tpoechtrager/osxcross:
+RUN apt-get update -qq && apt-get install -y -q --no-install-recommends \
+    clang file llvm patch xz-utils make && \
+    apt-get install -y -q git && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN git clone https://github.com/tpoechtrager/osxcross.git . \
+&& git checkout -q "${OSX_CROSS_COMMIT}" \
+&& rm -rf ./.git
+ADD https://s3.dockerproject.org/darwin/v2/${OSX_SDK}.tar.xz "${OSX_CROSS_PATH}/tarballs/${OSX_SDK}.tar.xz"
+RUN echo "${OSX_SDK_SUM}"  "${OSX_CROSS_PATH}/tarballs/${OSX_SDK}.tar.xz" | sha256sum -c -
+RUN UNATTENDED=yes OSX_VERSION_MIN=10.10 ./build.sh
+
+
+
+
+FROM debian:buster AS mac-final
+RUN apt-get update -qq && apt-get install -y -q clang
+ENV OSX_CROSS_PATH=/osxcross
+COPY --from=osx-cross "${OSX_CROSS_PATH}/." "${OSX_CROSS_PATH}/"
+ENV PATH=${OSX_CROSS_PATH}/target/bin:$PATH
+
+
+
+COPY . /projectroot/
+
+
+ENV PATH=${OSX_CROSS_PATH}/target/bin:$PATH
+RUN cd /projectroot && \
+    i386-apple-darwin14-clang convert.c -s -o binary.i386 && \
+    i386-apple-darwin14-strip binary.i386
+
+RUN cd /projectroot && \
+    x86_64-apple-darwin14-clang convert.c -s -o binary.x86_64 && \
+    x86_64-apple-darwin14-strip binary.x86_64
+
+RUN cd /projectroot && \
+    x86_64-apple-darwin14-lipo -create binary.i386 binary.x86_64 -output 60000-cheatcode-generator-mac
+
 FROM scratch AS export-stage
 COPY --from=compile_xenial /projectroot/*.elf /
 COPY --from=compile_xenial /projectroot/*.exe /
+COPY --from=mac-final /projectroot/60000-cheatcode-generator-mac /
+
